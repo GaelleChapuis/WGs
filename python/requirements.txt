@@ -1,0 +1,7 @@
+dataclasses
+matplotlib
+numpy
+pandas
+requests
+scipy
+seaborn
