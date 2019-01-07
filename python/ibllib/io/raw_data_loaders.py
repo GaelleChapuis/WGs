@@ -8,11 +8,15 @@
 Module contains one loader function per raw datafile
 
 """
-import os
 import json
+import wave
+import logging
+from pathlib import Path
 import numpy as np
 import pandas as pd
-from dateutil import parser
+import ciso8601
+
+logger_ = logging.getLogger('ibllib')
 
 
 def trial_times_to_times(raw_trial):
@@ -33,7 +37,7 @@ def trial_times_to_times(raw_trial):
     """
     ts_bs = raw_trial['behavior_data']['Bpod start timestamp']
     ts_ts = raw_trial['behavior_data']['Trial start timestamp']
-    ts_te = raw_trial['behavior_data']['Trial end timestamp']
+    # ts_te = raw_trial['behavior_data']['Trial end timestamp']
 
     def convert(ts):
         return ts + ts_ts - ts_bs
@@ -68,8 +72,7 @@ def load_data(session_path, time='absolute'):
     :return: A list of len ntrials each trial being a dictionary
     :rtype: list of dicts
     """
-    path = os.path.join(session_path, "raw_behavior_data",
-                        "_ibl_taskData.raw.jsonable")
+    path = Path(session_path).joinpath("raw_behavior_data", "_iblrig_taskData.raw.jsonable")
     data = []
     with open(path, 'r') as f:
         for line in f:
@@ -90,10 +93,9 @@ def load_settings(session_path):
     :return: Settings dictionary
     :rtype: dict
     """
-    path = os.path.join(session_path, "raw_behavior_data",
-                        "_ibl_taskSettings.raw.json")
+    path = Path(session_path).joinpath("raw_behavior_data", "_iblrig_taskSettings.raw.json")
     with open(path, 'r') as f:
-        settings = json.loads(f.readline())
+        settings = json.load(f)
     return settings
 
 
@@ -126,12 +128,14 @@ def load_encoder_events(session_path):
     :return: dataframe w/ 3 cols and (ntrials * 3) lines
     :rtype: Pandas.DataFrame
     """
-    path = os.path.join(session_path, "raw_behavior_data",
-                        "_ibl_encoderEvents.raw.ssv")
+    path = Path(session_path).joinpath("raw_behavior_data", "_iblrig_encoderEvents.raw.ssv")
     data = pd.read_csv(path, sep=' ', header=None)
     data = data.drop([0, 2, 5], axis=1)
     data.columns = ['re_ts', 'sm_ev', 'bns_ts']
-    data.bns_ts = pd.Series([parser.parse(x) for x in data.bns_ts])
+    if np.any(data.isna()):
+        logger_.warning('_iblrig_encoderEvents.raw.ssv has missing/incomplete records \n %s', path)
+    data.dropna(inplace=True)
+    data.bns_ts = data.bns_ts.apply(ciso8601.parse_datetime)
     return data
 
 
@@ -162,12 +166,15 @@ def load_encoder_positions(session_path):
     :return: dataframe w/ 3 cols and N positions
     :rtype: Pandas.DataFrame
     """
-    path = os.path.join(session_path, "raw_behavior_data",
-                        "_ibl_encoderPositions.raw.ssv")
+    path = Path(session_path).joinpath("raw_behavior_data", "_iblrig_encoderPositions.raw.ssv")
     data = pd.read_csv(path, sep=' ', header=None)
     data = data.drop([0, 4], axis=1)
     data.columns = ['re_ts', 're_pos', 'bns_ts']
-    data.bns_ts = pd.Series([parser.parse(x) for x in data.bns_ts])
+    if np.any(data.isna()):
+        logger_.warning('_iblrig_encoderPositions.raw.ssv has missing/incomplete records \n %s',
+                        path)
+    data.dropna(inplace=True)
+    data.bns_ts = data.bns_ts.apply(ciso8601.parse_datetime)
     return data
 
 
@@ -199,26 +206,73 @@ def load_encoder_trial_info(session_path):
     :return: dataframe w/ 8 cols and ntrials lines
     :rtype: Pandas.DataFrame
     """
-    path = os.path.join(session_path, "raw_behavior_data",
-                        "_ibl_encoderTrialInfo.raw.ssv")
+    path = Path(session_path).joinpath("raw_behavior_data", "_iblrig_encoderTrialInfo.raw.ssv")
     data = pd.read_csv(path, sep=' ', header=None)
     data = data.drop([8], axis=1)
     data.columns = ['trial_num', 'stim_pos_init', 'stim_contrast', 'stim_freq',
                     'stim_angle', 'stim_gain', 'stim_sigma', 'bns_ts']
-    data.bns_ts = pd.Series([parser.parse(x) for x in data.bns_ts])
+    data.bns_ts = data.bns_ts.apply(ciso8601.parse_datetime_as_naive)
     return data
 
-# Missing raw data file loaders
-# _ibl_ambientSensorData.raw.jsonable
-# _ibl_micData.raw.wav
-if __name__ == '__main__':
-    session_path = "/home/nico/Projects/IBL/IBL-github/iblrig/Subjects/\
-test_mouse/2018-10-02/1"
 
-    settings = load_settings(session_path)
-    data = load_data(session_path)
-    eEvents = load_encoder_events(session_path)
-    ePos = load_encoder_positions(session_path)
-    eTI = load_encoder_trial_info(session_path)
+def load_ambient_sensor(session_path):
+    """
+    Load Ambient Sensor data from session.
 
-    print("Done!")
+    Probably could be extracted to DatasetTypes:
+    _ibl_trials.temperature_C, _ibl_trials.airPressure_mb,
+    _ibl_trials.relativeHumidity
+    Returns a list of dicts one dict per trial.
+    dict keys are:
+    dict_keys(['Temperature_C', 'AirPressure_mb', 'RelativeHumidity'])
+
+    :param session_path: Absoulte path of session folder
+    :type session_path: str
+    :return: list of dicts
+    :rtype: list
+    """
+    path = Path(session_path).joinpath("raw_behavior_data",
+                                       "_iblrig_ambientSensorData.raw.jsonable")
+    data = []
+    with open(path, 'r') as f:
+        for line in f:
+            data.append(json.loads(line))
+    return data
+
+
+def load_mic(session_path):
+    """
+    Load Microphone wav file to np.array of len nSamples
+
+    :param session_path: Absoulte path of session folder
+    :type session_path: str
+    :return: An array of values of the sound waveform
+    :rtype: numpy.array
+    """
+    path = Path(session_path).joinpath("raw_behavior_data", "_iblrig_micData.raw.wav")
+    fp = wave.open(path)
+    nchan = fp.getnchannels()
+    N = fp.getnframes()
+    dstr = fp.readframes(N * nchan)
+    data = np.frombuffer(dstr, np.int16)
+    data = np.reshape(data, (-1, nchan))
+    return data
+
+
+def read_flag_file(fil):
+    """
+    Flag files are *.flag files within a session folder used to schedule some jobs
+    If they are empty, should return True
+
+    :param session_path: Absoulte path of session folder
+    :type session_path: str
+    :return: An array of values of the sound waveform
+    :rtype: numpy.array
+    """
+    # the flag file may contains specific file names for a targeted extraction
+    with open(fil) as fid:
+        save = list(filter(None, fid.read().splitlines()))
+    # if empty, extract everything by default
+    if len(save) == 0:
+        save = True
+    return save

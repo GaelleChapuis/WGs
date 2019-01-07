@@ -1,14 +1,16 @@
 import os
-from dataclasses import dataclass, field
-import abc
 from pathlib import Path, PurePath
 import requests
+import json
 
 import numpy as np
 import pandas as pd
 
-import ibllib.webclient as wc
 from ibllib.misc import is_uuid_string, pprint
+from ibllib.io.one import OneAbstract
+
+import oneibl.webclient as wc
+from oneibl.dataclass import SessionDataInfo
 import oneibl.params
 
 _ENDPOINTS = {  # keynames are possible input arguments and values are actual endpoints
@@ -71,63 +73,43 @@ SEARCH_TERMS = {  # keynames are possible input arguments and values are actual 
     'labs': 'lab',
     'lab': 'lab'
 }
-par = oneibl.params.get()
-
-
-class OneAbstract(abc.ABC):
-
-    @abc.abstractmethod
-    def load(self, eid, **kwargs):
-        return
-
-    @abc.abstractmethod
-    def list(self, **kwargs):
-        return
-
-    @abc.abstractmethod
-    def search(self, **kwargs):
-        return
-
-
-@dataclass
-class SessionDataInfo:
-    """
-    Dataclass that provides dataset list, dataset_id, local_path, dataset_type, url and eid fields
-    """
-    data: list = field(default_factory=list)
-    dataset_id: list = field(default_factory=list)
-    local_path: list = field(default_factory=list)
-    dataset_type: list = field(default_factory=list)
-    url: list = field(default_factory=list)
-    eid: list = field(default_factory=list)
-
-    def __str__(self):
-        """
-        This is to make print outputs more useful"
-        """
-        str_out = ''
-        d = self.__dict__
-        for k in d.keys():
-            str_out += (k + '    : ' + str(type(d[k])) + ' , ' + str(len(d[k])) + ' items = ' +
-                        str(d[k][0])) + '\n'
-        return str_out
 
 
 class ONE(OneAbstract):
-    def __init__(self, username=par.ALYX_LOGIN, password=par.ALYX_PWD, base_url=par.ALYX_URL):
+    def __init__(self, username=None, password=None, base_url=None):
+        # get parameters override if inputs provided
+        self._par = oneibl.params.get()
+        self._par = self._par.set('ALYX_LOGIN', username or self._par.ALYX_LOGIN)
+        self._par = self._par.set('ALYX_URL', base_url or self._par.ALYX_URL)
+        self._par = self._par.set('ALYX_PWD', password or self._par.ALYX_PWD)
         # Init connection to the database
         try:
-            self._alyxClient = wc.AlyxClient(username=username, password=password,
-                                             base_url=base_url)
+            self._alyxClient = wc.AlyxClient(username=self._par.ALYX_LOGIN,
+                                             password=self._par.ALYX_PWD,
+                                             base_url=self._par.ALYX_URL)
         except requests.exceptions.ConnectionError:
-            raise ConnectionError("Can't connect to " + base_url + '. \n' +
+            raise ConnectionError("Can't connect to " + self._par.ALYX_URL + '. \n' +
                                   'IP addresses are filtered on IBL database servers. \n' +
                                   'Are you connecting from an IBL participating institution ?')
-        print('Connected to ' + base_url + ' as ' + username)
+        print('Connected to ' + self._par.ALYX_URL + ' as ' + self._par.ALYX_LOGIN,)
+        # Init connection to Globus if needed
 
     @property
     def alyx(self):
         return self._alyxClient
+
+    def help(self, dataset_type=None):
+        if not dataset_type:
+            return self.alyx.rest('dataset-types', 'list')
+        if isinstance(dataset_type, list):
+            for dt in dataset_type:
+                self.help(dataset_type=dt)
+                return
+        if not isinstance(dataset_type, str):
+            print('No dataset_type provided or wrong type. Should be str')
+            return
+        out = self.alyx.rest('dataset-types', 'read', dataset_type)
+        print(out['description'])
 
     def list(self, eid=None, keyword='dataset-type', details=False):
         """
@@ -184,7 +166,7 @@ class ONE(OneAbstract):
                 return dlist
 
         # get the session information
-        ses = self._alyxClient.get('/sessions?id=' + eid)
+        ses = self.alyx.get('/sessions?id=' + eid)
 
         if keyword.lower() == 'all':
             return ses
@@ -194,7 +176,7 @@ class ONE(OneAbstract):
             return ses[0][keyword]
 
     def load(self, eid, dataset_types=None, dclass_output=False, dry_run=False, cache_dir=None,
-             download_only=False):
+             download_only=False, clobber=False):
         """
         From a Session ID and dataset types, queries Alyx database, downloads the data
         from Globus, and loads into numpy array.
@@ -213,21 +195,20 @@ class ONE(OneAbstract):
         :type cache_dir: str
         :param download_only: do not attempt to load data in memory, just download the files
         :type download_only: bool
+        :param clobber: force downloading even if files exists locally
+        :type clobber: bool
 
         :return: List of numpy arrays matching the size of dataset_types parameter, OR
          a dataclass containing arrays and context data.
         :rtype: list, dict, dataclass SessionDataInfo
         """
-        # TODO: feature that downloads a list of datasets from a list of sessions,
-        # TODO in this case force dictionary output
         # if the input as an UUID, add the beginning of URL to it
-        if not cache_dir:
-            cache_dir = par.CACHE_DIR
+        cache_dir = self._get_cache_dir(cache_dir)
         if is_uuid_string(eid):
             eid = '/sessions/' + eid
         eid_str = eid[-36:]
         # get session json information as a dictionary from the alyx API
-        ses = self._alyxClient.get('/sessions?id=' + eid_str)
+        ses = self.alyx.get('/sessions?id=' + eid_str)
         if not ses:
             raise FileNotFoundError('Session ' + eid_str + ' does not exist')
         ses = ses[0]
@@ -239,56 +220,30 @@ class ONE(OneAbstract):
             dclass_output = True
             dataset_types = [d['dataset_type'] for d in ses['data_dataset_session_related']
                              if d['data_url']]
-        # loop over each dataset related to the session ID and get list of files urls
-        session_dtypes = [d['dataset_type'] for d in ses['data_dataset_session_related']]
-        out = SessionDataInfo()
-        # this first loop only downloads the file to ease eventual refactoring
-        for ind, dt in enumerate(dataset_types):
-            for [i, sdt] in enumerate(session_dtypes):
-                if sdt == dt:
-                    urlstr = ses['data_dataset_session_related'][i]['data_url']
-                    if urlstr and not dry_run:
-                        rel_path = PurePath(urlstr.replace(par.HTTP_DATA_SERVER, '.')).parents[0]
-                        cache_dir_file = PurePath(cache_dir, rel_path)
-                        Path(cache_dir_file).mkdir(parents=True, exist_ok=True)
-                        fil = wc.http_download_file(urlstr,
-                                                    username=par.HTTP_DATA_SERVER_LOGIN,
-                                                    password=par.HTTP_DATA_SERVER_PWD,
-                                                    cache_dir=str(cache_dir_file))
-                    else:
-                        fil = ''
-                    out.eid.append(eid_str)
-                    out.dataset_type.append(dt)
-                    out.url.append(urlstr)
-                    out.local_path.append(fil)
-                    out.dataset_id.append(ses['data_dataset_session_related'][i]['id'])
-                    out.data.append([])
-        # then another loop over files and load them in numpy. If not npy, just pass empty list
-        # the data loading per format needs to be implemented in a generic function in ibllib/alf.
-        for ind, fil in enumerate(out.local_path):
-            if download_only:
-                continue
-            if fil and os.path.getsize(fil) == 0:
-                continue
-            if fil and os.path.splitext(fil)[1] == '.npy':
-                out.data[ind] = np.load(file=fil)
-            if fil and os.path.splitext(fil)[1] == '.json':
-                pass  # FIXME would be nice to implement json read but param from matlab RIG fails
-            if fil and os.path.splitext(fil)[1] == '.tsv':
-                out.data[ind] = pd.read_csv(fil, delimiter='\t')
-            if fil and os.path.splitext(fil)[1] == '.csv':
-                out.data[ind] = pd.read_csv(fil)
+        dc = SessionDataInfo.from_session_details(ses, dataset_types=dataset_types)
+        # loop over each dataset and download if necessary
+        for ind in range(len(dc)):
+            if dc.url[ind] and not dry_run:
+                relpath = PurePath(dc.url[ind].replace(self._par.HTTP_DATA_SERVER, '.')).parents[0]
+                cache_dir_file = PurePath(cache_dir, relpath)
+                Path(cache_dir_file).mkdir(parents=True, exist_ok=True)
+                dc.local_path[ind] = self._download_file(dc.url[ind], str(cache_dir_file), clobber)
+        # load the files content in variables if requested
+        if not download_only:
+            for ind, fil in enumerate(dc.local_path):
+                dc.data[ind] = _load_file_content(fil)
+        # parse output arguments
         if dclass_output:
-            return out
-        # if required, parse the output as a list that matches dataset types provided
+            return dc
+        # if required, parse the output as a list that matches dataset_types requested
         list_out = []
         for dt in dataset_types:
-            if dt not in out.dataset_type:
+            if dt not in dc.dataset_type:
                 list_out.append(None)
                 continue
-            for i, x, in enumerate(out.dataset_type):
+            for i, x, in enumerate(dc.dataset_type):
                 if dt == x:
-                    list_out.append(out.data[i])
+                    list_out.append(dc.data[i])
         return list_out
 
     def _ls(self, table=None, verbose=False):
@@ -325,7 +280,7 @@ class ONE(OneAbstract):
         return list_out[0], full_out[0]
 
     def search(self, dataset_types=None, users=None, subjects=None, date_range=None,
-               lab=None, details=False):
+               lab=None, number=None, details=False):
         """
         Applies a filter to the sessions (eid) table and returns a list of json dictionaries
          corresponding to sessions.
@@ -340,6 +295,8 @@ class ONE(OneAbstract):
         :type lab: list or str
         :param date_range: list of 2 strings or list of 2 dates that define the range
         :type date_range: list
+        :param number: session number
+        :type number: str or int
         :param details: default False, returns also the session details as per the REST response
         :type details: bool
 
@@ -361,6 +318,8 @@ class ONE(OneAbstract):
             url = url + 'dataset_types=' + ','.join(dataset_types)  # dataset_types query
         if users:
             url = url + '&users=' + ','.join(users)
+        if number:
+            url = url + '&number=' + str(number)
         if subjects:
             url = url + '&subject=' + ','.join(subjects)
         if lab:
@@ -377,6 +336,22 @@ class ONE(OneAbstract):
         else:
             return eids
 
+    def _get_cache_dir(self, cache_dir):
+        if not cache_dir:
+            cache_dir = self._par.CACHE_DIR
+        # if empty in parameter file, do not allow and set default
+        if not cache_dir:
+            cache_dir = str(PurePath(Path.home(), "Downloads", "FlatIron"))
+        return cache_dir
+
+    def _download_file(self, url, cache_dir, clobber=False):
+        local_path = wc.http_download_file(url,
+                                           username=self._par.HTTP_DATA_SERVER_LOGIN,
+                                           password=self._par.HTTP_DATA_SERVER_PWD,
+                                           cache_dir=str(cache_dir),
+                                           clobber=clobber)
+        return local_path
+
     @staticmethod
     def search_terms():
         """
@@ -385,7 +360,7 @@ class ONE(OneAbstract):
         :return: a tuple containing possible search terms:
         :rtype: tuple
         """
-        #  Implemented as a method to make sure this can't be changed
+        #  Implemented as a method to make sure this stays private
         return SEARCH_TERMS
 
     @staticmethod
@@ -405,3 +380,18 @@ def _validate_date_range(date_range):
     if len(date_range) == 1:
         date_range = [date_range[0], date_range[0]]
     return date_range
+
+
+def _load_file_content(fil):
+    if fil and os.path.getsize(fil) == 0:
+        return
+    if fil and os.path.splitext(fil)[1] == '.npy':
+        return np.load(file=fil)
+    if fil and os.path.splitext(fil)[1] == '.json':
+        return None
+        with open(fil) as _fil:
+            return json.loads(_fil.read())
+    if fil and os.path.splitext(fil)[1] == '.tsv':
+        return pd.read_csv(fil, delimiter='\t')
+    if fil and os.path.splitext(fil)[1] == '.csv':
+        return pd.read_csv(fil)
