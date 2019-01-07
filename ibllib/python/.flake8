@@ -1,5 +1,6 @@
 [flake8]
-ignore =
+max-line-length = 99
+ignore = W504
 exclude =
     .git,
     __pycache__,
@@ -7,4 +8,3 @@ exclude =
     scratch_*.py,
     tutorial_script.py,
     test_imports.py,
-max-complexity = 20
