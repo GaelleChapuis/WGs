@@ -97,5 +97,17 @@ classdef CartesianVolume
         function zl = zlim(self)
             zl = self.i2z([0 self.nz]);
         end
+        
+        % full scales for plots
+        function xs = xscale(self)
+           xs = self.i2x([1:self.nx]');
+        end
+        function ys = yscale(self)
+            ys = self.i2y([1:self.ny]');
+        end
+        function zs = zscale(self)
+            zs = self.i2z([1:self.nz]');
+        end
+        
     end
 end

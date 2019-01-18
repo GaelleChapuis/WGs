@@ -2,19 +2,19 @@ function [V, h, cv, labels] = get_whs12
 
 
 % The T1 ('spin lattice relaxation') data was acquired with an RF refocused spin echo sequence, using TR=50 ms and a TE=5.1 ms.
-nii_file = '/datadisk/BrainAtlas/whs12/canon_T1_r_downsample2.nii';
+nii_file = '/datadisk/BrainAtlas/ATLASES/whs12/canon_T1_r_downsample2.nii';
 % The T2 ('spin spin relaxation') data was acquired with a Carr-Purcell-Meiboom-Gill (CPMG) multi-echo sequence, with TR=300 ms and TE ranging from 7.5 to 60 ms.
-nii_file = '/datadisk/BrainAtlas/whs12/CT2starWarped2T1_downsample2.nii';
+nii_file = '/datadisk/BrainAtlas/ATLASES/whs12/CT2starWarped2T1_downsample2.nii';
 % The T2* ('magnetic susceptibility') data was acquired with a 45° gradient echo sequence, using TR=50 ms and TE=4.3 ms. An affine transform is applied to the raw T2 and T2* scans to best align with the T1 (CIVM datasets CT2Warped2T1.nii and CT2starWarped2T1.nii).
-nii_file = '/datadisk/BrainAtlas/whs12/CT2Warped2T1_downsample2.nii';
+nii_file = '/datadisk/BrainAtlas/ATLASES/whs12/CT2Warped2T1_downsample2.nii';
 V.phy = io.read.nii(nii_file);
 % the labels file
-nii_file = '/datadisk/BrainAtlas/whs12/WHS_0_6_1_Labels_downsample2.nii';
+nii_file = '/datadisk/BrainAtlas/ATLASES/whs12/WHS_0_6_1_Labels_downsample2.nii';
 [V.lab, H] = io.read.nii(nii_file);
 
-label_file = '/datadisk/BrainAtlas/whs12/acr2full.json';
+label_file = '/datadisk/BrainAtlas/ATLASES/whs12/acr2full.json';
 
-x3d_file = '/datadisk/BrainAtlas/whs12/wholebrain.x3d';
+x3d_file = '/datadisk/BrainAtlas/ATLASES/whs12/wholebrain.x3d';
 
 %https://scalablebrainatlas.incf.org/mouse/WHS12
 res = H.PixelDimensions(1)/1e3;
@@ -121,7 +121,7 @@ cv = CartesianVolume(V.lab, res, xyz0);
 % and our citation policy at:
 % https://scalablebrainatlas.incf.org/main/citationpolicy.php
 %
-whs12_mat_file = '/datadisk/BrainAtlas/whs12/3d_patch.mat';
+whs12_mat_file = '/datadisk/BrainAtlas/ATLASES/whs12/3d_patch.mat';
 
 % download the files but cache them locally to allow offline processing
 if ~exist(whs12_mat_file, 'file')
