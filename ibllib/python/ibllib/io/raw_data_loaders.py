@@ -72,7 +72,10 @@ def load_data(session_path, time='absolute'):
     :return: A list of len ntrials each trial being a dictionary
     :rtype: list of dicts
     """
-    path = Path(session_path).joinpath("raw_behavior_data", "_iblrig_taskData.raw.jsonable")
+    path = Path(session_path).joinpath("raw_behavior_data")
+    path = next(path.glob("_iblrig_taskData.raw*.jsonable"), None)
+    if not path:
+        return None
     data = []
     with open(path, 'r') as f:
         for line in f:
@@ -93,7 +96,10 @@ def load_settings(session_path):
     :return: Settings dictionary
     :rtype: dict
     """
-    path = Path(session_path).joinpath("raw_behavior_data", "_iblrig_taskSettings.raw.json")
+    path = Path(session_path).joinpath("raw_behavior_data")
+    path = next(path.glob("_iblrig_taskSettings.raw*.json"), None)
+    if not path:
+        return None
     with open(path, 'r') as f:
         settings = json.load(f)
     return settings
@@ -128,15 +134,14 @@ def load_encoder_events(session_path):
     :return: dataframe w/ 3 cols and (ntrials * 3) lines
     :rtype: Pandas.DataFrame
     """
-    path = Path(session_path).joinpath("raw_behavior_data", "_iblrig_encoderEvents.raw.ssv")
+    path = Path(session_path).joinpath("raw_behavior_data")
+    path = next(path.glob("_iblrig_encoderEvents.raw*.ssv"), None)
+    if not path:
+        return None
     data = pd.read_csv(path, sep=' ', header=None)
     data = data.drop([0, 2, 5], axis=1)
     data.columns = ['re_ts', 'sm_ev', 'bns_ts']
-    if np.any(data.isna()):
-        logger_.warning('_iblrig_encoderEvents.raw.ssv has missing/incomplete records \n %s', path)
-    data.dropna(inplace=True)
-    data.bns_ts = data.bns_ts.apply(ciso8601.parse_datetime)
-    return data
+    return _groom_wheel_data(data, label='_iblrig_encoderEvents.raw.ssv', path=path)
 
 
 def load_encoder_positions(session_path):
@@ -166,16 +171,17 @@ def load_encoder_positions(session_path):
     :return: dataframe w/ 3 cols and N positions
     :rtype: Pandas.DataFrame
     """
-    path = Path(session_path).joinpath("raw_behavior_data", "_iblrig_encoderPositions.raw.ssv")
+    path = Path(session_path).joinpath("raw_behavior_data")
+    path = next(path.glob("_iblrig_encoderPositions.raw*.ssv"), None)
+    if not path:
+        return None
+    if path.stat().st_size == 0:
+        logger_.error("_iblrig_encoderPositions.raw.ssv is an empty file. ")
+        raise ValueError("_iblrig_encoderPositions.raw.ssv is an empty file. ABORT EXTRACTION. ")
     data = pd.read_csv(path, sep=' ', header=None)
     data = data.drop([0, 4], axis=1)
     data.columns = ['re_ts', 're_pos', 'bns_ts']
-    if np.any(data.isna()):
-        logger_.warning('_iblrig_encoderPositions.raw.ssv has missing/incomplete records \n %s',
-                        path)
-    data.dropna(inplace=True)
-    data.bns_ts = data.bns_ts.apply(ciso8601.parse_datetime)
-    return data
+    return _groom_wheel_data(data, label='_iblrig_encoderPositions.raw.ssv', path=path)
 
 
 def load_encoder_trial_info(session_path):
@@ -206,13 +212,15 @@ def load_encoder_trial_info(session_path):
     :return: dataframe w/ 8 cols and ntrials lines
     :rtype: Pandas.DataFrame
     """
-    path = Path(session_path).joinpath("raw_behavior_data", "_iblrig_encoderTrialInfo.raw.ssv")
+    path = Path(session_path).joinpath("raw_behavior_data")
+    path = next(path.glob("_iblrig_encoderTrialInfo.raw*.ssv"), None)
+    if not path:
+        return None
     data = pd.read_csv(path, sep=' ', header=None)
     data = data.drop([8], axis=1)
     data.columns = ['trial_num', 'stim_pos_init', 'stim_contrast', 'stim_freq',
                     'stim_angle', 'stim_gain', 'stim_sigma', 'bns_ts']
-    data.bns_ts = data.bns_ts.apply(ciso8601.parse_datetime_as_naive)
-    return data
+    return _groom_wheel_data(data, label='_iblrig_encoderEvents.raw.ssv', path=path)
 
 
 def load_ambient_sensor(session_path):
@@ -231,8 +239,10 @@ def load_ambient_sensor(session_path):
     :return: list of dicts
     :rtype: list
     """
-    path = Path(session_path).joinpath("raw_behavior_data",
-                                       "_iblrig_ambientSensorData.raw.jsonable")
+    path = Path(session_path).joinpath("raw_behavior_data")
+    path = next(path.glob("_iblrig_ambientSensorData.raw*.jsonable"), None)
+    if not path:
+        return None
     data = []
     with open(path, 'r') as f:
         for line in f:
@@ -249,7 +259,10 @@ def load_mic(session_path):
     :return: An array of values of the sound waveform
     :rtype: numpy.array
     """
-    path = Path(session_path).joinpath("raw_behavior_data", "_iblrig_micData.raw.wav")
+    path = Path(session_path).joinpath("raw_behavior_data")
+    path = next(path.glob("_iblrig_micData.raw*.wav"), None)
+    if not path:
+        return None
     fp = wave.open(path)
     nchan = fp.getnchannels()
     N = fp.getnframes()
@@ -259,20 +272,21 @@ def load_mic(session_path):
     return data
 
 
-def read_flag_file(fil):
-    """
-    Flag files are *.flag files within a session folder used to schedule some jobs
-    If they are empty, should return True
+def _groom_wheel_data(data, label='file ', path=''):
+    if np.any(data.isna()):
+        logger_.warning(label + 'has missing/incomplete records \n %s', path)
+    data.dropna(inplace=True)
+    data.drop(data.loc[data.bns_ts.apply(len) != 33].index, inplace=True)
+    data.bns_ts = data.bns_ts.apply(ciso8601.parse_datetime_as_naive)
+    return data
 
-    :param session_path: Absoulte path of session folder
-    :type session_path: str
-    :return: An array of values of the sound waveform
-    :rtype: numpy.array
-    """
-    # the flag file may contains specific file names for a targeted extraction
-    with open(fil) as fid:
-        save = list(filter(None, fid.read().splitlines()))
-    # if empty, extract everything by default
-    if len(save) == 0:
-        save = True
-    return save
+
+def save_bool(save, dataset_type):
+    logger = logging.getLogger('ibllib.alf')
+    if isinstance(save, bool):
+        out = save
+    elif isinstance(save, list):
+        out = (dataset_type in save) or (Path(dataset_type).stem in save)
+    if out:
+        logger.info('extracting' + dataset_type)
+    return out
