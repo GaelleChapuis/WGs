@@ -17,9 +17,11 @@ else
 end
 % End initialization code - DO NOT EDIT
 
+
 function Needles_OpeningFcn(hobj, evt, h, varargin)
 h.output = hobj;
 guidata(hobj, h);
+
 
 function varargout = Needles_OutputFcn(hobj, evt, h) 
 logo = logo_ibl('square');
@@ -36,6 +38,15 @@ h.pref = io.read.json(pfile);
 guidata(hobj, h);
 varargout{1} = h.output;
 
+
+function menu_about_Callback(hObject, eventdata, handles)
+message = {'International Brain Laboratory', ...
+           'Github: https://github.com/int-brain-lab/WGs',...
+           'MIT License', ...
+           'Atlas from http://repo.mouseimaging.ca/repo/DSURQE_40micron_nifti/'}
+f = msgbox(message, 'Needles v0.0.0')
+
+
 function menu_file_loadatlas_Callback(hobj, evt, h)
 [D.V, ~, D.cs, D.labels] = brainatlas.get_dsurqe(h.pref.path_atlas, 'lateralize', h.pref.lateralize, 'display', false);
 lims.ap_lims = [-.009205 .004288]; % Antero Posterior selection (to remove OB and spine) WAXHOLM
@@ -45,7 +56,6 @@ lims = struct('ap_lims', [-0.005177 0.005503], 'ml_lims', [-0.004 0.004]); % for
 % Z: DV (yaw), 1st_dim -+
 % VOL(Z, X, Y)
 [D.E, D.S] = insert_electrodes(D.V, D.cs, lims);
-
 % Create all the objects depending on the top axes
 h.im_top = imagesc(D.cs.yscale, D.cs.xscale, D.S.top', 'Parent', h.axes_top);
 set(h.axes_top, 'ydir', 'normal','DataAspectRatio',[1 1 1], 'NextPlot', 'add')
@@ -115,6 +125,7 @@ set(h.fig_main, 'WindowButtonUpFcn', @pl_top_apline_ButtonUpFcn)
 set([h.pl_lab_zone h.pl_phy_zone], 'xdata', NaN, 'ydata', NaN)
 set(h.txt_labels, 'String', '')
 
+
 function pl_top_apline_ButtonUpFcn(hobj, evt)
 h = guidata(hobj);
 D = getappdata(hobj, 'Data');
@@ -122,6 +133,7 @@ ap_current = get(h.pl_top_apline, 'xdata');
 Update_Slices(h.fig_main, [], ap_current)
 set(h.axes_top,'UserData', round(D.cs.y2i(ap_current(1))))
 set(h.fig_main, 'WindowButtonUpFcn', '')
+
 
 function fig_main_WindowButtonMotionFcn(hobj, evt, h)
 % Next gets executed if over slice or label axes
