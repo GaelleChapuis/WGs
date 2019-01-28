@@ -2,13 +2,29 @@ from pathlib import Path
 import json
 import datetime
 import logging
+import traceback
 
 import ibllib.time
 from ibllib.misc import version
-from ibllib.io.raw_data_loaders import load_data
+import ibllib.io.raw_data_loaders as raw
+import ibllib.io.flags as flags
+
 from oneibl.one import ONE
 
-logger_ = logging.getLogger('ibllib.one')
+logger_ = logging.getLogger('ibllib.alf')
+
+
+# this is a decorator to add a logfile to each extraction and registration on top of the logging
+def log2sessionfile(func):
+    def func_wrapper(self, sessionpath, *args, **kwargs):
+        fh = logging.FileHandler(Path(sessionpath).joinpath('extract_register.log'))
+        str_format = '%(asctime)s,%(msecs)d %(levelname)-8s [%(filename)s:%(lineno)d] %(message)s'
+        fh.setFormatter(logging.Formatter(str_format))
+        logger_.addHandler(fh)
+        f = func(self, sessionpath, *args, **kwargs)
+        logger_.removeHandler(fh)
+        return f
+    return func_wrapper
 
 
 class RegistrationClient:
@@ -17,30 +33,42 @@ class RegistrationClient:
         if not one:
             self.one = ONE()
         self.dtypes = self.one.alyx.rest('dataset-types', 'list')
+        self.file_extensions = [df['file_extension'] for df in
+                                self.one.alyx.rest('data-formats', 'list')]
 
-    def register_sync(self, root_data_folder):
+    def register_sync(self, root_data_folder, dry=False):
         flag_files = Path(root_data_folder).glob('**/register_me.flag')
         for flag_file in flag_files:
+            if dry:
+                print(flag_file)
+                continue
+            file_list = flags.read_flag_file(flag_file)
             logger_.info('registering' + str(flag_file.parent))
-            status_str = self.register_session(flag_file.parent)
+            status_str = self.register_session(flag_file.parent, file_list=file_list)
             if status_str:
                 error_message = str(flag_file.parent) + ' failed registration'
                 error_message += '\n' + ' ' * 8 + status_str
-                logging.error(error_message)
+                error_message += traceback.format_exc()
+                logger_.error(error_message)
                 err_file = flag_file.parent.joinpath('register_me.error')
                 flag_file.rename(err_file)
                 with open(err_file, 'w+') as f:
                     f.write(error_message)
                 continue
-            flag_file.unlink()
+            flag_file.rename(flag_file.parent.joinpath('flatiron.flag'))
 
-    def register_session(self, ses_path):
+    @log2sessionfile
+    def register_session(self, ses_path, file_list=True):
         if isinstance(ses_path, str):
             ses_path = Path(ses_path)
         # read meta data from the rig for the session from the task settings file
-        settings_json_file = [f for f in ses_path.glob('**/_iblrig_taskSettings.raw.json')][0]
+        settings_json_file = [f for f in ses_path.glob('**/_iblrig_taskSettings.raw*.json')]
+        if not settings_json_file:
+            logger_.error(['could not find _iblrig_taskSettings.raw.json. Abort.'])
+            return
+        else:
+            settings_json_file = settings_json_file[0]
         md = _read_settings_json_compatibility_enforced(settings_json_file)
-
         # query alyx endpoints for subject, projects and repository information
         try:
             subject = self.one.alyx.rest('subjects?nickname=' + md['SUBJECT_NAME'], 'list')[0]
@@ -57,12 +85,15 @@ class RegistrationClient:
                                      date_range=md['SESSION_DATE'],
                                      number=md['SESSION_NUMBER'],
                                      details=True)
+        try:
+            user = self.one.alyx.rest('users', 'read', md["PYBPOD_CREATOR"][0])
+        except Exception:
+            return 'Subject: ' + md["PYBPOD_CREATOR"][0] + " doesn't exist in Alyx"
 
-        user = self.one.alyx.rest('users', 'read', md["PYBPOD_CREATOR"][0])
         username = user['username'] if user else subject['responsible_user']
 
         # load the trials data to get information about session duration
-        ses_data = load_data(ses_path)
+        ses_data = raw.load_data(ses_path)
         ses_duration_secs = ses_data[-1]['behavior_data']['Trial end timestamp'] - \
             ses_data[-1]['behavior_data']['Bpod start timestamp']
         start_time = ibllib.time.isostr2date(md['SESSION_DATETIME'])
@@ -74,6 +105,12 @@ class RegistrationClient:
 
         # checks that the number of actual trials and labeled number of trials check out
         assert(len(ses_data) == ses_data[-1]['trial_num'])
+
+        # task specific logic
+        if 'habituationChoiceWorld' in md['PYBPOD_PROTOCOL']:
+            n_correct_trials = 0
+        else:
+            n_correct_trials = ses_data[-1]['ntrials_correct']
 
         # if nothing found create a new session in Alyx
         if not session:
@@ -89,11 +126,18 @@ class RegistrationClient:
                     'number': md['SESSION_NUMBER'],
                     'start_time': ibllib.time.date2isostr(start_time),
                     'end_time': ibllib.time.date2isostr(end_time),
-                    'n_correct_trials': ses_data[-1]['ntrials_correct'],
+                    'n_correct_trials': n_correct_trials,
                     'n_trials': ses_data[-1]['trial_num'],
                     'json': json.dumps(md, indent=1),
                     }
             session = self.one.alyx.rest('sessions', 'create', data=ses_)
+            if md['SUBJECT_WEIGHT']:
+                wei_ = {'subject': subject['nickname'],
+                        'date_time': ibllib.time.date2isostr(start_time),
+                        'weight': md['SUBJECT_WEIGHT'],
+                        'user': username
+                        }
+                self.one.alyx.rest('weighings', 'create', wei_)
         else:
             session = session[0]
 
@@ -113,12 +157,18 @@ class RegistrationClient:
         rename_files_compatibility(ses_path, md['IBLRIG_VERSION_TAG'])
         F = {}  # empty dict whose keys will be relative paths and content filenames
         for fn in ses_path.glob('**/*.*'):
-            if fn.suffix == '.flag' or fn.suffix == '.error':
+            if fn.suffix in ['.flag', '.error', '.avi', '.log']:
+                logger_.debug('Excluded: ', str(fn))
                 continue
             if not self._match_filename_dtypes(fn):
                 logger_.warning('No matching dataset type for: ' + str(fn))
                 continue
-            # enforces that the session information is consistent with the current generic path
+            if fn.suffix not in self.file_extensions:
+                logger_.warning('No matching dataformat (ie. file extension) for: ' + str(fn))
+                continue
+            if not _register_bool(fn.name, file_list):
+                logger_.debug('Not in filelist: ' + str(fn))
+                continue
             try:
                 assert (str(gen_rel_path) in str(fn))
             except AssertionError:
@@ -131,6 +181,7 @@ class RegistrationClient:
                 F[str(rel_path)] = [fn.name]
             else:
                 F[str(rel_path)].append(fn.name)
+            logger_.info('Registering ' + str(fn))
 
         for rpath in F:
             r_ = {'created_by': username,
@@ -148,6 +199,14 @@ class RegistrationClient:
             if re.match(reg, Path(full_file).name, re.IGNORECASE):
                 return True
         return False
+
+
+def _register_bool(fn, file_list):
+    if isinstance(file_list, bool):
+        return file_list
+    if isinstance(file_list, str):
+        file_list = [file_list]
+    return any([fil in fn for fil in file_list])
 
 
 def _read_settings_json_compatibility_enforced(json_file):
@@ -168,14 +227,16 @@ def _read_settings_json_compatibility_enforced(json_file):
         #  change the date format to proper ISO
         dt = datetime.datetime.strptime(md['SESSION_DATETIME'], '%Y-%m-%d %H:%M:%S.%f')
         md['SESSION_DATETIME'] = ibllib.time.date2isostr(dt)
+        if 'SUBJECT_WEIGHT' not in md.keys():
+            md['SUBJECT_WEIGHT'] = None
     return md
 
 
 def rename_files_compatibility(ses_path, version_tag):
     if version.le(version_tag, '3.2.3'):
-        task_code = ses_path.glob('**/_iblrig_TaskCodeFiles.raw.zip')
-        for fn in task_code:
-            fn.rename(fn.parent.joinpath('_iblrig_codeFiles.raw.zip'))
         task_code = ses_path.glob('**/_ibl_trials.iti_duration.npy')
         for fn in task_code:
             fn.rename(fn.parent.joinpath('_ibl_trials.itiDuration.npy'))
+    task_code = ses_path.glob('**/_iblrig_taskCodeFiles.raw.zip')
+    for fn in task_code:
+        fn.rename(fn.parent.joinpath('_iblrig_codeFiles.raw.zip'))
