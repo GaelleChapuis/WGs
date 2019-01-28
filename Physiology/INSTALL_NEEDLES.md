@@ -8,13 +8,18 @@
 
 ## Clone or download the WGs repository
 
-Within the repository, edit the `./WGs/Physiology/needles_param.json` file and set the path_atlas to the folder in which you did download the 3 files mentionned above. For example: 
+Within the repository, edit the `./WGs/Physiology/needles_param.json` file.  
+Set the path_atlas to the folder in which you did download the 3 files mentionned above.  
+For example: 
 	` "path_atlas": "/datadisk/BrainAtlas/ATLASES/DSURQE_40micron",`
 
 ## Setup the Matlab Path and run
 
-For general use without worrying about the path, run `RunNeedles.m`  file in Matlab
+For general use without worrying about the path, run `Run_Needles.m`  file in Matlab
 
 For advanced use with a non-frozen ibllib library, set your paths to:
 -	`./WGs/Physiology/`
 -	the ibllib Matlab library
+
+## Within the GUI
+A blank window should have appeared by now. Click on `File > Load`.  This will fetch and display the Atlas you did download.
