@@ -3,7 +3,7 @@
 ## Download the 3 following files in a directory of your choice:
 
 -	http://repo.mouseimaging.ca/repo/DSURQE_40micron_nifti/DSURQE_40micron_average.nii
--	http://repo.mouseimaging.ca/repo/DSURQE_40micron_labels.nii
+-	http://repo.mouseimaging.ca/repo/DSURQE_40micron_nifti/DSURQE_40micron_labels.nii
 -	http://repo.mouseimaging.ca/repo/DSURQE_40micron/DSURQE_40micron_R_mapping.csv
 
 ## Clone or download the WGs repository
