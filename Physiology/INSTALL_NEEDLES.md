@@ -9,6 +9,8 @@ Earliers versions need to install the Json lab toolbox https://github.com/fangq/
 -	http://repo.mouseimaging.ca/repo/DSURQE_40micron_nifti/DSURQE_40micron_labels.nii
 -	http://repo.mouseimaging.ca/repo/DSURQE_40micron/DSURQE_40micron_R_mapping.csv
 
+Needles uses the DSURQE Atlas. For more information, http://www.mouseimaging.ca/technologies/mouse_atlas/C57Bl6j_mouse_atlas.html
+
 ## Clone or download the WGs repository
 
 -	Within the repository, edit the `./WGs/Physiology/needles_param.json` file.  
