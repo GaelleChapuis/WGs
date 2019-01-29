@@ -1,5 +1,8 @@
 # Install notes for Needles
 
+Designed for Matlab R2016b+.
+Earliers versions need to install the Json lab toolbox https://github.com/fangq/jsonlab.
+
 ## Download the 3 following files in a directory of your choice:
 
 -	http://repo.mouseimaging.ca/repo/DSURQE_40micron_nifti/DSURQE_40micron_average.nii
@@ -21,5 +24,9 @@ For advanced use with a non-frozen ibllib library, set your paths to:
 -	`./WGs/Physiology/`
 -	the ibllib Matlab library
 
-## Within the GUI
-A blank window should have appeared by now. Click on `File > Load`.  This will fetch and display the Atlas you did download.
+## Usage
+A blank window should have appeared by now.  
+-	click on `File > Load`.  This will fetch and display the Atlas you did download.
+-	click and remain clicked on the AP line on the axial window and move to find a coronal plane
+-	click on one of the blue electrodes to jump to the corresponding coronal plane.
+
