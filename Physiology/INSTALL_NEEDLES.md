@@ -11,8 +11,8 @@ Earliers versions need to install the Json lab toolbox https://github.com/fangq/
 
 ## Clone or download the WGs repository
 
-Within the repository, edit the `./WGs/Physiology/needles_param.json` file.  
-Set the path_atlas to the folder in which you did download the 3 files mentionned above.  
+-	Within the repository, edit the `./WGs/Physiology/needles_param.json` file.  
+-	Set the path_atlas to the folder in which you did download the 3 files mentionned above.  
 For example: 
 	` "path_atlas": "/datadisk/BrainAtlas/ATLASES/DSURQE_40micron",`  
 **Windows users need to "escape" backslashes this way**:  
