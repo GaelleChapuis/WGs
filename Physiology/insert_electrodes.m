@@ -47,9 +47,9 @@ E.xyz_ = probe_sph2cart(r, E.theta, E.phi, E.xyz_entry);
 
 % get a uniform sampling of points along the electrode paths to compute exit point
 nr = ceil(len_electrode*4/cs.dx); % number of sample points along the path
-X_ = cs.x2i((E.xyz_(:,1) - E.xyz_entry(:,1))*linspace(0,1,nr) + E.xyz_entry(:,1)) ;
-Y_ = cs.y2i((E.xyz_(:,2) - E.xyz_entry(:,2))*linspace(0,1,nr) + E.xyz_entry(:,2));
-Z_ = cs.z2i((E.xyz_(:,3) - E.xyz_entry(:,3))*linspace(0,1,nr) + E.xyz_entry(:,3));
+X_ = cs.x2i(bsxfun(@plus, (E.xyz_(:,1) - E.xyz_entry(:,1))*linspace(0,1,nr), E.xyz_entry(:,1)));
+Y_ = cs.y2i(bsxfun(@plus, (E.xyz_(:,2) - E.xyz_entry(:,2))*linspace(0,1,nr), E.xyz_entry(:,2)));
+Z_ = cs.z2i(bsxfun(@plus, (E.xyz_(:,3) - E.xyz_entry(:,3))*linspace(0,1,nr), E.xyz_entry(:,3)));
 E.labels = interp3(V.lab, X_, Z_, Y_, 'nearest'); %extract the indices from the volume
 % if all points are 0 this is a dud but this shouldn't happen as each
 % electrode has a point of entry on the top surface
