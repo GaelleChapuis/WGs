@@ -2,6 +2,12 @@ function [V, h, cv, labels] = get_dsurqe(atlas_path, varargin)
 % [V, h, cv, labels] = brainatlas.get_dsurqe(atlas_path, varargin);
 % [V, h, cv, labels] = brainatlas.get_dsurqe(..., 'lateralize', true, 'display', false);
 
+
+% X: ML (pitch), 2nd_dim (left - right +)
+% Y: AP (roll), 3d_dim +-
+% Z: DV (yaw), 1st_dim -+
+% VOL(Z, X, Y)
+
 % NB: will have to add option for offset to origin for Bregma
 p = inputParser;
 addParameter(p,'lateralize', false);
@@ -37,17 +43,23 @@ else
     end
 end
 
-if ~display
-    xyz0 = [-0.00633537645743948 -0.00797709592544222 -0.0051982867355663];
+% xyz0 = -mean(fv.vertices);
+% THis is the 'COG' of the label vertices
+xyz0 = [-0.00633537645743948 -0.00797709592544222 -0.0051982867355663];
+xyz0 = xyz0 - [ 0 .002623 -.003723]; % BRegma estimate skull
+% xyz0 = xyz0 - [ 0 .002623 -.003427]; % BRegma estimate brain
+
+if ~display    
     cv = CartesianVolume(V.lab, res, xyz0);
     h=[];
     return
 end
 
+
 fv = isosurface(permute(V.lab~=0,[3, 2, 1]),0.5);
 % in this case the volume is out in pixel unit, convert to SI
 fv.vertices = fv.vertices.*res;
-cv = CartesianVolume(V.lab, res, -mean(fv.vertices));
+cv = CartesianVolume(V.lab, res, xyz0);
 
 fv.vertices = bsxfun( @minus, fv.vertices, mean(fv.vertices));
 
