@@ -35,6 +35,8 @@ if ~exist(pfile, 'file')
     io.write.json(pfile, default)
 end
 h.pref = io.read.json(pfile);
+h.fcn.Update_Slices = @Update_Slices;
+h.fcn.Update_txt_electrodes = @Update_txt_electrodes;
 % wrap-up and save in handles
 guidata(hobj, h);
 varargout{1} = h.output;
@@ -205,11 +207,11 @@ set(h.pan_electrode, 'Visible', 'on');
 set(h.txt_electrode, 'Visible', 'on', 'String', { '', ...
     ['Line: ' num2str(D.E.Line(ie(1)), '%04.0f')], ...
     ['Point: ' num2str(D.E.Point(ie(1)), '%04.0f')], ...
-    ['AP: ' num2str(D.E.xyz_entry(ie(1),2)*1e6, '%06.0f (um)')],...
-    ['ML: ' num2str(D.E.xyz_entry(ie(1),1)*1e6, '%06.0f (um)')]});
+    ['AP: ' num2str(D.E.xyz_entry(ie(1),2)*1e3, '%6.3f (mm)')],...
+    ['ML: ' num2str(D.E.xyz_entry(ie(1),1)*1e3, '%6.3f (mm)')]});
 %     ['Depths (shallow): ' num2str(D.E.length(ie(1)',1)*1e6, '%06.0f (um)')],...
 %     ['Depths (deep): ' num2str(D.E.length(ie(2)',1)*1e6, '%06.0f (um)')]},...
-    
+
 
 function Update_txt_xyz(hobj, ml, ap, dv)
 h = guidata(hobj);

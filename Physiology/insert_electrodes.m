@@ -3,6 +3,7 @@ function [E, S] = insert_electrodes(V, cs, lims)
 % Y: AP (roll), 3d_dim 
 % Z: DV (yaw), 1st_dim
 display = false;
+save = false;
 % extract surfaces of the top and bottom of the brain
 [S.top, S.bottom] = deal(zeros(cs.ny, cs.nx));
 for s=1:cs.ny
@@ -26,8 +27,8 @@ delec = 0.5*1e-3; % we start with a grid of half mm
 % create a mesh of electrodes, extract the z coordinate from the brain surface
 E = [];
 [y_, x_] = meshgrid([0:delec:cs.ly]+cs.y0, [0:delec:cs.lx]+cs.x0);
-l_ = round((x_-cs.x0)/delec)*24 + 2000; % line is the coronal slice number
-p_ = round((y_-cs.y0)/delec)*24 + 5000; % point is the sagital slice number
+p_ = round((x_-cs.x0)/delec)*24 + 2000; % line is the coronal slice number
+l_ = round((y_-cs.y0)/delec)*24 + 5000; % point is the sagital slice number
 z_ = cs.i2z(interp2(S.top, cs.x2i(x_), cs.y2i(y_)));
 E.xyz_entry = [x_(~isnan(z_(:))), y_(~isnan(z_(:))), z_(~isnan(z_(:)))];
 E.Line = l_(~isnan(z_(:)));
@@ -88,15 +89,17 @@ esel = esel & ~between(E.xyz_entry(:,1), cs.i2x(cs.nx/2)+[-1 1].*mid_line_exclus
 % save the selections in the structure
 E.esel = esel;
 
-if ~display, return, end
+if save
+    % save csv
+    CSV_IMPLANTS = 'implantations.csv';
+    T = [E.Line, E.Point, E.xyz_entry.*1e3 E.theta.*180/pi E.phi E.length.*1000 E.rec_length.*1000];
+    csv_head = ['Line, Point, X_mm, Y_mm, Z_mm, Theta_deg, Phi_deg, Length_mm, Rec_length_mm' char(10)];
+    T = sortrows(T(esel,:), [2 1 4]);
+    fid = fopen(CSV_IMPLANTS,'w+'); fwrite(fid, csv_head); fclose(fid);
+    dlmwrite('implantations.csv', T,'-append')
+end
 
-% save csv
-CSV_IMPLANTS = 'implantations.csv';
-T = [E.xyz_entry E.theta.*180/pi E.phi E.length.*1000 E.rec_length.*1000];
-csv_head = ['X, Y, Z, Theta, Phi, Length_mm, Rec_length_mm' char(10)];
-T = sortrows(T(esel,:), [2 1 4]);
-fid = fopen(CSV_IMPLANTS,'w+'); fwrite(fid, csv_head); fclose(fid);
-dlmwrite('implantations.csv', T,'-append')
+if ~display, return, end
 
 % now display electrodes
 col = get(gca,'colororder');

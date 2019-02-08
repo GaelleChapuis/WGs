@@ -7,6 +7,7 @@ n_ses_per_year = ndays_train_per_year * nlabs * n_mice_per_ses
 print(str(n_ses_per_year), ' training sessions per year')
 
 # 2 Go/camera/hour of recording at 25 Hz, cropped, mpeg compression, 850/570 framesize, 2 cams
+# in practice we have 424Mb for 48 mins compressed at 29
 size_training_video_hourly_Gb = np.array([2,4])
 ncams = 1
 ses_duration_h = 1 # Session time 1 hour
