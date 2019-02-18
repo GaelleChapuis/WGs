@@ -3,6 +3,7 @@
 Designed for Matlab R2016b+.
 Earliers versions need to install the Json lab toolbox https://github.com/fangq/jsonlab.
 
+
 ## Download the 3 following files in a directory of your choice:
 
 -	http://repo.mouseimaging.ca/repo/DSURQE_40micron_nifti/DSURQE_40micron_average.nii
@@ -12,8 +13,8 @@ Earliers versions need to install the Json lab toolbox https://github.com/fangq/
 Needles uses the DSURQE Atlas. For more information, http://www.mouseimaging.ca/technologies/mouse_atlas/C57Bl6j_mouse_atlas.html
 
 ## Clone or download the WGs repository
-
--	Within the repository, edit the `./WGs/Physiology/needles_param.json` file.  
+-	Clone or download the WGs repository (https://github.com/int-brain-lab/WGs)
+-	Within the WGs/Physiology repository, edit the `./WGs/Physiology/needles_param.json` file.  
 -	Set the path_atlas to the folder in which you did download the 3 files mentionned above.  
 For example: 
 	` "path_atlas": "/datadisk/BrainAtlas/ATLASES/DSURQE_40micron",`  
